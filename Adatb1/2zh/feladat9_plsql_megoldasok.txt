@@ -1,3 +1,35 @@
+/* (select ... into)
+Írjunk meg egy függvényt, amelyik visszaadja egy adott fizetési kategóriába tartozó
+dolgozók átlagfizetését.
+*/
+create or replace function kategoria(fiz integer ) return nikovits.fiz_kategoria.kategoria%type is
+  kat nikovits.fiz_kategoria.kategoria%type;
+begin
+  for akt in ( select * from nikovits.fiz_kategoria ) loop
+    if fiz between akt.also and akt.felso then
+      kat := akt.kategoria;
+      exit;
+    end if;
+  end loop;
+  return kat;
+end;
+/
+CREATE OR REPLACE FUNCTION kat_atlag(n nikovits.fiz_kategoria.kategoria%type) RETURN number IS
+  atlag float;
+begin
+  select atl into atlag
+  from (
+    select kategoria(fizetes) as kat , avg(fizetes) as atl
+    from nikovits.dolgozo
+    group by kategoria(fizetes)
+  )
+  where kat = n;
+  return atlag;
+end; 
+/
+SELECT kat_atlag(4) FROM dual;
+/
+
 /* (cursor és asszociatív tömb használata)
 Írjunk meg egy plsql procedúrát, amelyik veszi a dolgozókat ábácé szerinti sorrendben, 
 és minden páratlan sorszámú dolgozó nevét és fizetését beleteszi egy asszociatív tömbbe. 

@@ -91,3 +91,42 @@ BEGIN
 END;
 /
 call kor_kereso('Denver');
+/
+
+/*
+Írjunk meg egy procedúrát, amelyik a NIKOVITS.VAGYONOK tábla alapján kiírja azoknak a nevét és 
+városát, akiknek legalább 2 olyan felmenőjük van, akiknek ugyanaz a városa, mint az illetőnek.
+*/
+create or replace 
+function uazavarosfelmeno( apu in nikovits.vagyonok.apja%type,
+                           varoska in nikovits.vagyonok.varos%type)
+return integer is
+  apuci nikovits.vagyonok.apja%type;
+  varosi nikovits.vagyonok.varos%type;
+begin
+  if apu = 'NINCS' then
+      return 0;
+  else 
+    select apja,varos into apuci,varosi
+    from nikovits.vagyonok
+    where nev = apu;
+    if varoska = varosi then
+      return uazavarosfelmeno(apuci,varoska) + 1;
+    else 
+      return uazavarosfelmeno(apuci,varoska);
+    end if;
+  end if;
+end;
+/
+CREATE OR REPLACE PROCEDURE felmeno2 IS
+begin
+  for emberke in ( select nev, apja, varos from nikovits.vagyonok ) loop
+    if uazavarosfelmeno( emberke.apja, emberke.varos ) >= 2 then
+      dbms_output.put_line('Név: '||emberke.nev||' Város: '||emberke.varos);
+    end if;
+  end loop;
+end;
+/
+set serveroutput on
+call felmeno2();
+/

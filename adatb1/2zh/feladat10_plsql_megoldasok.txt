@@ -1,0 +1,132 @@
+/*
+Írjunk meg egy procedúrát, amelyik a NIKOVITS.VAGYONOK tábla alapján kiírja azoknak
+a személyeknek a nevét, akikre igaz, hogy van olyan leszármazottjuk, akinek nagyobb
+a vagyona, mint az illető vagyona.
+*/
+create or replace PROCEDURE GAZDAG_LESZARMAZOTT is 
+cursor valami is 
+  SELECT apja
+  FROM nikovits.vagyonok
+  WHERE CONNECT_BY_ROOT vagyon < vagyon
+  CONNECT BY  PRIOR nev = apja;
+ bonus   VARCHAR2(20);
+BEGIN
+    open valami;
+    loop
+    fetch valami into bonus; 
+    exit when valami%NOTFOUND;  
+  DBMS_OUTPUT.PUT_LINE('apa = ' ||bonus );
+  end loop;
+END;
+
+-----------------------------------------------------
+/*
+Írjunk meg egy procedúrát, amelyik a NIKOVITS.VAGYONOK tábla alapján kiírja azoknak
+a személyeknek a nevét, vagyonát, valamint leszármazottainak átlagos vagyonát, akikre igaz, 
+hogy a leszármazottainak átlagos vagyona nagyobb, mint az illető vagyona.
+A program tehát soronként 3 adatot ír ki: név, vagyon, leszármazottak átlagos vagyona
+*/
+--- két részből oldom meg a feladatot, előbb meg kell csinálni a functiont, és azt használjuk a procedure-ben
+
+CREATE OR REPLACE FUNCTION lesz_vagyon_avg ( alap_nev VARCHAR2 ) RETURN NUMBER IS
+    eredmeny NUMBER;
+BEGIN
+    SELECT AVG(vagyon) as atlag INTO eredmeny
+    FROM nikovits.vagyonok
+    WHERE LEVEL > 1
+    START WITH nev = alap_nev
+    CONNECT BY PRIOR nev = apja
+    GROUP BY CONNECT_BY_ROOT nev;
+    
+    RETURN eredmeny;
+END;
+
+CREATE OR REPLACE PROCEDURE gazdag_leszarmazottak IS
+
+cursor valami is
+    SELECT nev, vagyon, NVL(lesz_vagyon_avg(nev), 0) as leszarmazott
+    FROM nikovits.vagyonok;
+
+    sajt valami%ROWTYPE;
+BEGIN
+    
+    OPEN valami;
+    loop
+        fetch valami into sajt;
+        EXIT WHEN valami%NOTFOUND;
+        
+        IF sajt.vagyon < sajt.leszarmazott THEN
+            dbms_output.put_line(sajt.nev || ' - ' || sajt.vagyon || ' - ' || sajt.leszarmazott);
+        END IF;
+    end loop;
+END;
+
+/*
+Írjunk meg egy procedúrát, amelyik a NIKOVITS.JARATOK tábla alapján kiírja azoknak az irányított
+köröknek a csomópontjait (városait), amelyek a paraméterként megadott várossal kezdődnek és végződnek.
+Tetszőleges elválasztó karakter használható. Példa egy kiírásra: Dallas-Chicago-Denver-Dallas
+CREATE OR REPLACE PROCEDURE kor_kereso(kezdopont VARCHAR2) IS
+Tesztelés:
+set serveroutput on
+call kor_kereso('Denver');
+*/
+CREATE OR REPLACE PROCEDURE kor_kereso(kezdopont VARCHAR2) IS
+cursor c1 is 
+    SELECT CONNECT_BY_ROOT honnan AS indulas, hova AS cel, LEVEL as hossz, 
+       SYS_CONNECT_BY_PATH(honnan, '->')||'->'||hova as Utvonal
+    FROM nikovits.jaratok
+    START WITH honnan=kezdopont
+    CONNECT BY NOCYCLE PRIOR hova = honnan and hova = kezdopont
+    ORDER BY LEVEL;
+bonus c1%ROWTYPE;
+BEGIN
+    open c1;
+    loop
+        fetch c1 into bonus; 
+        exit when c1%NOTFOUND;
+        if bonus.indulas = bonus.cel then
+            DBMS_OUTPUT.PUT_LINE(bonus.Utvonal);
+        end if;
+    end loop;
+END;
+/
+call kor_kereso('Denver');
+/
+
+/*
+Írjunk meg egy procedúrát, amelyik a NIKOVITS.VAGYONOK tábla alapján kiírja azoknak a nevét és 
+városát, akiknek legalább 2 olyan felmenőjük van, akiknek ugyanaz a városa, mint az illetőnek.
+*/
+create or replace 
+function uazavarosfelmeno( apu in nikovits.vagyonok.apja%type,
+                           varoska in nikovits.vagyonok.varos%type)
+return integer is
+  apuci nikovits.vagyonok.apja%type;
+  varosi nikovits.vagyonok.varos%type;
+begin
+  if apu = 'NINCS' then
+      return 0;
+  else 
+    select apja,varos into apuci,varosi
+    from nikovits.vagyonok
+    where nev = apu;
+    if varoska = varosi then
+      return uazavarosfelmeno(apuci,varoska) + 1;
+    else 
+      return uazavarosfelmeno(apuci,varoska);
+    end if;
+  end if;
+end;
+/
+CREATE OR REPLACE PROCEDURE felmeno2 IS
+begin
+  for emberke in ( select nev, apja, varos from nikovits.vagyonok ) loop
+    if uazavarosfelmeno( emberke.apja, emberke.varos ) >= 2 then
+      dbms_output.put_line('Név: '||emberke.nev||' Város: '||emberke.varos);
+    end if;
+  end loop;
+end;
+/
+set serveroutput on
+call felmeno2();
+/

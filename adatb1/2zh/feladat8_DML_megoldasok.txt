@@ -1,0 +1,162 @@
+CREATE TABLE dolg2   AS SELECT * FROM nikovits.dolgozo;
+CREATE TABLE oszt2   AS SELECT * FROM nikovits.osztaly;
+CREATE TABLE fizkat2 AS SELECT * FROM nikovits.Fiz_kategoria;
+
+set serveroutput on
+
+select * from dolg2;
+select * from oszt2;
+select * from fizkat2;
+
+-- Töröljük azokat a dolgozókat, akiknek jutaléka NULL.
+-- delete from dolg2 where jutalek is null;
+select * from dolg2 where jutalek is null;
+
+
+-- Töröljük azokat a dolgozókat, akiknek a belépési dátuma 1982 előtti.
+-- delete from dolg2 where to_char(belepes, 'yyyy') < 1982;
+select * from dolg2 where to_char(belepes, 'yyyy') < 1982;
+
+
+-- Töröljük azokat a dolgozókat, akik osztályának telephelye DALLAS.
+delete from dolg2
+where oazon = (select oazon from oszt2 where telephely = 'DALLAS');
+
+
+-- Töröljük azokat a dolgozókat, akiknek a fizetése kisebb, mint az átlagfizetés.
+delete from dolg2
+where fizetes < (select avg(fizetes) from DOLG2);
+
+
+-- Töröljük a jelenleg legjobban kereső dolgozót.
+create or replace
+procedure rem_highest_salary_worker is
+  highest_salary_dkod dolg2.dkod%type;
+begin
+  select dkod into highest_salary_dkod
+  from (
+    select dkod from dolg2
+    order by fizetes desc)
+  where rownum = 1;
+
+  delete from dolg2 where dkod = highest_salary_dkod;
+end;
+/
+-- call rem_highest_salary_worker();
+
+
+-- Töröljük ki azokat az osztályokat, akiknek van olyan dolgozója, aki a 2-es fizetési
+--   kategóriába esik (lásd még Fiz_kategoria táblát).
+--   (Adjuk meg azon osztályok nevét, amelyeknek van olyan dolgozója,
+--   aki a 2-es fizetési kategóriába esik)
+delete from oszt2
+where oazon in (
+  select unique oazon
+  from dolg2 d
+    join fizkat2 fk
+    on d.fizetes between fk.also and fk.felso
+  where kategoria = 2
+);
+
+
+-- Töröljük ki azon osztályokat, amelyeknek 2 olyan dolgozója van, aki a 2-es fizetési kategóriába esik.
+delete from oszt2
+where oazon in (
+  select oazon
+  from dolg2 d
+    join fizkat2 fk
+    on d.fizetes between fk.also and fk.felso
+  where kategoria = 2
+  group by oazon
+  having count(dkod) = 2
+);
+
+
+-- INSERT part:
+
+-- Vigyünk fel egy 'Kovacs' nevű új dolgozót a 10-es osztályra a következő
+--  értékekkel: dkod=1, dnev='Kovacs', oazon=10, belépés=aktuális dátum,
+--  fizetés=a 10-es osztály átlagfizetése. A többi oszop legyen NULL.
+insert into dolg2 (dkod, dnev, oazon, belepes, fizetes)
+values (1, 'Kovacs', 10, CURRENT_DATE,
+ (select avg(fizetes)
+  from dolg2
+  where oazon = 10)
+);
+
+
+-- UPDATE part:
+
+
+-- Növeljük meg a 20-as osztályon a dolgozók fizetését 20%-kal.
+update dolg2
+set fizetes = fizetes * 1.2
+where oazon = 20;
+
+
+-- Növeljük meg azok fizetését 500-zal, akik jutaléka NULL vagy a fizetésük
+--   kisebb az átlagnál.
+update dolg2
+set fizetes = fizetes + 500
+where jutalek is null
+   or fizetes < (select avg(fizetes) from dolg2);
+
+
+-- Növeljük meg mindenkinek a jutalékát a jelenlegi maximális jutalékkal. (NULL tekintsük 0-nak)
+update dolg2
+set jutalek = NVL(jutalek, 0) + (select max(jutalek) from dolg2);
+
+
+-- Módosítsuk 'Loser'-re a legrosszabbul kereső dolgozó nevét.
+update dolg2
+set dnev = 'Loser'
+where fizetes = (select min(fizetes) from dolg2);
+
+
+-- Növeljük meg azoknak a dolgozóknak a jutalékát 3000-rel, akiknek legalább 2 közvetlen beosztottjuk van.
+--   Az ismeretlen (NULL) jutalékot vegyük úgy, mintha 0 lenne.
+update dolg2
+set jutalek = NVL(jutalek, 0) + 3000
+where dkod in (
+  select fonoke fonokok
+  from dolg2
+  group by fonoke
+  having count(dkod) >= 2
+);
+
+
+-- Növeljük meg azoknak a dolgozóknak a fizetését, akiknek van beosztottja, a minimális fizetéssel
+update dolg2
+set fizetes = fizetes + 1
+where dkod in (
+  select fonoke fukar_fonokok from dolg2 d
+  natural join (select min(fizetes) fizetes from dolg2)
+);
+
+
+-- Növeljük meg a nem fonökök fizetését a saját osztályuk átlagfizetésével
+update dolg2 dolgozo
+set fizetes = fizetes + (
+  select avg(fizetes)
+  from dolg2
+  where oazon = dolgozo.oazon
+  group by oazon)
+where dkod not in (  -- fonokok
+  select unique fonoke
+  from dolg2
+  where fonoke is not null
+);
+
+CREATE OR REPLACE
+PROCEDURE proc_teszt IS
+  test_result VARCHAR2(20);
+begin
+  -- do update / delete / insert
+  -- make a query to test the update / delete / insert
+  -- eg:  SELECT ... INTO test_result FROM ...;
+  dbms_output.put_line(test_result);
+  ROLLBACK;
+end;
+/
+set serveroutput on
+call proc_teszt();

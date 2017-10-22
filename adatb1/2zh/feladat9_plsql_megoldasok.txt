@@ -1,0 +1,241 @@
+/* (select ... into)
+Írjunk meg egy függvényt, amelyik visszaadja egy adott fizetési kategóriába tartozó
+dolgozók átlagfizetését.
+*/
+create or replace function kategoria(fiz integer ) return nikovits.fiz_kategoria.kategoria%type is
+  kat nikovits.fiz_kategoria.kategoria%type;
+begin
+  for akt in ( select * from nikovits.fiz_kategoria ) loop
+    if fiz between akt.also and akt.felso then
+      kat := akt.kategoria;
+      exit;
+    end if;
+  end loop;
+  return kat;
+end;
+/
+CREATE OR REPLACE FUNCTION kat_atlag(n nikovits.fiz_kategoria.kategoria%type) RETURN number IS
+  atlag float;
+begin
+  select atl into atlag
+  from (
+    select kategoria(fizetes) as kat , avg(fizetes) as atl
+    from nikovits.dolgozo
+    group by kategoria(fizetes)
+  )
+  where kat = n;
+  return atlag;
+end; 
+/
+SELECT kat_atlag(4) FROM dual;
+/
+
+/* (cursor és asszociatív tömb használata)
+Írjunk meg egy plsql procedúrát, amelyik veszi a dolgozókat ábácé szerinti sorrendben, 
+és minden páratlan sorszámú dolgozó nevét és fizetését beleteszi egy asszociatív tömbbe. 
+A procedúra a végén írja ki a tömb utolsó elõtti sorát.
+*/
+
+CREATE OR REPLACE
+PROCEDURE proc9 IS
+  TYPE Map_Dnev_To_Fiz IS
+    TABLE OF dolg2.fizetes%TYPE
+    INDEX BY dolg2.dnev%TYPE;
+  mymap Map_Dnev_To_Fiz;
+  isOddRow Boolean := true;
+begin
+  for currentRow in (
+      select dnev, fizetes
+      from dolg2
+      order by dnev)
+  loop
+    if isOddRow then
+      mymap(currentRow.dnev) := currentRow.fizetes;
+    end if;
+    isOddRow := not isOddRow;
+  end loop;
+
+  dbms_output.put_line('dnev: '||mymap.prior(mymap.last)||', fizetes: '||mymap(mymap.prior(mymap.last)));
+end;
+/
+set serveroutput on
+call proc9();
+
+
+/* (paraméteres kurzor)
+Írjunk meg egy plsql programot (név nélküli blokkot), amelyik kiírja azon dolgozók
+nevét és belépési dátumát, akik a felhasználó által megadott osztályon dolgoznak.
+A felhasználó az osztály nevének első betűjét adja meg (ACCEPT-tel kérjük be).
+A program írja ki az osztály nevét is. Ha nincs megfelelő osztály, akkor azt írja ki.
+*/
+ACCEPT onev_begin CHAR PROMPT 'Adja meg az osztály nevének az első betűjét:';
+declare
+  oazon_in oszt2.oazon%type := null;
+  osztNev  oszt2.onev%type;
+begin
+  select oazon into oazon_in from oszt2
+  where upper(onev) LIKE upper('&onev_begin%');
+
+  select onev into osztNev from oszt2 where oazon = oazon_in;
+  dbms_output.put_line('Talált osztály: '||osztNev||'.');
+
+  for curr in (select dnev, belepes from dolg2 where oazon = oazon_in) loop
+    dbms_output.put_line('Dnev: '||curr.dnev||', belepes: '||curr.belepes);
+  end loop;
+exception
+  when NO_DATA_FOUND then
+    dbms_output.put_line('Nincs megfelelő osztály.');
+end;
+/
+
+
+/* (módosítás)
+Írjunk meg egy procedúrát, amelyik megnöveli azoknak a dolgozóknak a fizetését 1-el,
+akiknek a fizetési kategóriája ugyanaz, mint a procedúra paramétere.
+A procedúra a módosítás után írja ki a módosított (új) fizetések átlagát két tizedesjegyre kerekítve.
+*/
+CREATE OR REPLACE
+PROCEDURE kat_novel(p_kat NUMBER) IS
+  avg_fiz real;
+begin
+  update dolg2
+  set fizetes = fizetes + 1
+  where dkod in (
+    select dkod
+    from dolg2 d
+    join fizkat2 fk
+      on d.fizetes between fk.also and fk.felso
+    where kategoria = p_kat
+  );
+
+  select avg(fizetes) into avg_fiz
+  from dolg2
+  where dkod in (
+    select dkod
+    from dolg2 d
+    join fizkat2 fk
+      on d.fizetes between fk.also and fk.felso
+    where kategoria = p_kat
+  );
+
+  dbms_output.put_line('A módosított dolgozók átlagfizetése: '|| avg_fiz);
+  ROLLBACK;
+end;
+/
+set serveroutput on
+call kat_novel(2);
+
+
+/* (módosítás kurzorral)
+Írjunk meg egy procedúrát, amelyik módosítja a paraméterében megadott osztályon a fizetéseket, és
+kiírja a dolgozó nevét és új fizetését.  A módosítás mindenki fizetéséhez adjon hozzá n*10 ezret,
+ahol n a dolgozó nevében levő magánhangzók száma (a, e, i, o, u).
+*/
+CREATE OR REPLACE
+PROCEDURE fiz_mod(p_oazon INTEGER) IS
+  cursor dolgCurs is
+    select dnev, fizetes
+    from dolg2
+    where oazon = p_oazon
+  for update;
+
+  currDnev dolg2.dnev%type;
+  currFiz  dolg2.fizetes%type;
+begin
+  open dolgCurs;
+  loop
+    fetch dolgCurs into currDnev, currFiz;
+    exit when dolgCurs%notfound;
+
+    currFiz := currFiz + 10000*length(REGEXP_REPLACE(currDnev, '[^aeiouAEIOU]'));
+    dbms_output.put_line('Dnev: '||currDnev||', uj fizetes: '|| currFiz);
+
+    update dolg2
+    set fizetes = fizetes
+                + 10000*length(REGEXP_REPLACE(currDnev, '[^aeiouAEIOU]'))
+    where current of dolgCurs;
+  end loop;
+  close dolgCurs;
+  ROLLBACK;
+end;
+/
+set serveroutput on
+call fiz_mod(10);
+
+
+/* (exception)
+Írjunk meg egy függvényt, amelyik egy karakteres típusú paraméterben egy dátumot
+kap a következő formátumban: 'éééé.hh.nn' vagy 'nn.hh.éééé'.
+A függvény adja vissza a nap nevét, pl. 'kedd'.
+Ha a megadott karakterlánc nem egy érvényes dátum, akkor adja vissza, hogy 'rossz dátum'.
+*/
+CREATE OR REPLACE
+FUNCTION nap_nev(p_kar varchar2) RETURN varchar2 IS
+begin
+  case
+    when REGEXP_LIKE(p_kar, '\d{4}\.\d{2}\.\d{2}') then
+      return to_char(to_date(p_kar, 'yyyy.mm.dd'), 'DAY');
+    when REGEXP_LIKE(p_kar, '\d{2}\.\d{2}\.\d{4}') then
+      return to_char(to_date(p_kar, 'dd.mm.yyyy'), 'DAY');
+    else
+      return 'rossz dátum';
+    end case;
+end;
+/
+SELECT nap_nev('2017.05.01'), nap_nev('02.05.2017'), nap_nev('abc') FROM dual;
+
+
+/* (exception, SQLCODE)
+Írjunk meg egy procedúrát, amelyik a paraméterében kapott számra külön sorokba kiírja
+annak reciprokát, négyzetgyökét, és faktoriálisát. Ha bármelyik nem értelmezhető vagy
+túlcsordulást okoz, akkor erre a részre írja ki a kapott hibakódot. (SQLCODE).
+*/
+CREATE OR REPLACE
+PROCEDURE szamok(n number) IS
+begin
+  declare begin
+    dbms_output.put_line('reciproc: '|| (1/n));
+  exception when others then dbms_output.put_line('error: '||sqlcode);
+  end;
+  declare begin
+    dbms_output.put_line('square root: '||sqrt(n));
+  exception when others then dbms_output.put_line('error: '||sqlcode);
+  end;
+  declare
+    fact integer := 1;
+  begin
+    for i in 2..n loop
+      fact := fact * i;
+    end loop;
+    dbms_output.put_line('factorial: '|| fact);
+  exception when others then dbms_output.put_line('error: '||sqlcode);
+  end;
+end;
+/
+set serveroutput on
+call szamok(0);
+call szamok(-2);
+call szamok(40);
+
+
+/*
+Írjunk meg egy függvényt, amelyik visszaadja a paraméterként szereplő '+'-szal
+elválasztott számok és kifejezések összegét. Ha valamelyik kifejezés nem szám,
+akkor azt az összeadásnál hagyja figyelmen kívül, vagyis 0-nak tekintse.
+*/
+CREATE OR REPLACE
+FUNCTION osszeg2(p_char VARCHAR2) RETURN number IS
+  nth integer := 1;
+  digits integer;
+  summ integer := 0;
+begin
+  digits := REGEXP_SUBSTR(p_char, '\d+', 1, nth);
+  while digits is not null loop
+    summ := summ + TO_NUMBER(digits);
+    nth := nth + 1;
+    digits := REGEXP_SUBSTR(p_char, '\d+', 1, nth);
+  end loop;
+  return summ;
+end;
+/
+SELECT osszeg2('1+21 + bubu + + 2 ++') FROM dual;

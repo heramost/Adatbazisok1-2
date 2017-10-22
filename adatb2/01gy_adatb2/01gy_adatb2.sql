@@ -234,7 +234,7 @@ oszlopokra mûködik.
 
 CREATE OR REPLACE PROCEDURE cr_tab(p_owner VARCHAR2, p_tabla VARCHAR2) IS
 BEGIN
-    dbms_output.put_line('CREATE TABLE(');
+    dbms_output.put_line('CREATE TABLE ' || p_tabla ||'(');
     
 --Fontos megjegyzés: 'ORA-00997: illegal use of LONG datatype' error ugrik fel, ha 
 --'distinct' kulcsszó és 'data_default' is szerepel a 'dba_tab_columns' tábla lekérdezésekor.

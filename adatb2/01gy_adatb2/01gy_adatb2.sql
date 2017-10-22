@@ -88,59 +88,32 @@ INTERSECT
 ---=== 10. feladat ===---
 --Melyek azok az objektum típusok, amelyek tényleges tárolást igényelnek, vagyis
 --tartoznak hozzájuk adatblokkok? (A többinek csak a definíciója tárolódik adatszótárban)
---Nagy valószíb?séggel nem jó megoldás.
 
-(
-    SELECT distinct OBJECT_TYPE
-    FROM DBA_OBJECTS
-)
-INTERSECT
-(
-    SELECT distinct SEGMENT_TYPE as OBJECT_TYPE
-    FROM DBA_SEGMENTS --Tartalmazza az objektumokat, melyek fizikai tárolász igényelnek
-);
+SELECT distinct object_type 
+FROM dba_objects 
+WHERE data_object_id is not null;
 
 ---=== 11. feladat ===---
 --Melyek azok az objektum típusok, amelyek nem igényelnek tényleges tárolást, vagyis nem
 --tartoznak hozzájuk adatblokkok? (Ezeknek csak a definíciója tárolódik adatszótárban)
---Nagy valószíb?séggel nem jó megoldás.
 
-(
-    SELECT distinct OBJECT_TYPE
-    FROM DBA_OBJECTS
-)
-MINUS
-(
-    SELECT distinct SEGMENT_TYPE as OBJECT_TYPE
-    FROM DBA_SEGMENTS --Tartalmazza az objektumokat, melyek fizikai tárolász igényelnek
-);
+SELECT distinct object_type 
+FROM dba_objects 
+WHERE data_object_id is null;
 
 ---=== Bónusz ===---
 --Az utóbbi két lekérdezés metszete nem üres. Vajon miért? -> lásd majd partícionálás
---NEM JÓ EREDMÉNY
 
 (
-    (
-        SELECT distinct OBJECT_TYPE
-        FROM DBA_OBJECTS
-    )
-    INTERSECT
-    (
-        SELECT distinct SEGMENT_TYPE as OBJECT_TYPE
-        FROM DBA_SEGMENTS --Tartalmazza az objektumokat, melyek fizikai tárolász igényelnek
-    )
+    SELECT distinct object_type 
+    FROM dba_objects 
+    WHERE data_object_id is not null
 )
 INTERSECT
 (
-    (
-        SELECT distinct OBJECT_TYPE
-        FROM DBA_OBJECTS
-    )
-    MINUS
-    (
-        SELECT distinct SEGMENT_TYPE as OBJECT_TYPE
-        FROM DBA_SEGMENTS --Tartalmazza az objektumokat, melyek fizikai tárolász igényelnek
-    )
+    SELECT distinct object_type 
+    FROM dba_objects 
+    WHERE data_object_id is  null
 );
 
 /*************************************************/

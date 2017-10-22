@@ -1,10 +1,20 @@
 # Adatbázisok 1-2
 
-## Adatbázisok 1
+Pár konvenció a repo-hoz:
+* Minden feladatsorhoz tartozó megoldás külön `.sql` fájlba kerüljön!
+* A feladatok megoldása felett szerepeljen a leírásuk!
+* Amennyiben egy feladat megoldása nem jó vagy nem biztos hogy jó, az legyen jól láthatóan felűntetve!
+* Halmazműveletek esetén legyenek jól elkülíthetőek a lekérdezések!
+* Hosszabb lekérdezések esetén több sorba legyen tördeljünk!
 
-### Második zh
-
-Ezeket mind meg kéne oldani. A kérés az hogy MINDEN megoldás külön .sql fájlba kerüljön! A fájl neve ``proceduranev.sql`` legyen, pl. ``prim.sql``. 
-* http://people.inf.elte.hu/nikovits/AB1/feladat7_plsql.txt
-* http://people.inf.elte.hu/nikovits/AB1/feladat9_plsql.txt
-* http://people.inf.elte.hu/nikovits/AB1/feladat10_plsql.txt
+NEM OK:
+```SQL
+SELECT looooooooooooong_id, looongeeeeeeeeeeeeeeeeeeeeer_id FROM table1, looooong_table, table2, WHERE a = 10 AND b > 900 GROUP BY owner HAVING count(*) < 10;
+```
+Ehelyett:
+```SQL
+SELECT looooooooooooong_id, looongeeeeeeeeeeeeeeeeeeeeer_id 
+FROM table1, looooong_table, table2, 
+WHERE a = 10 AND b > 900 
+GROUP BY owner HAVING count(*) < 10;
+```
